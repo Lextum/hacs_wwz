@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy, UnitOfPower
+from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -71,11 +71,11 @@ class WwzDailyEnergySensor(CoordinatorEntity[WwzEnergyCoordinator], SensorEntity
 class WwzHourlyEnergySensor(CoordinatorEntity[WwzEnergyCoordinator], SensorEntity):
     """Sensor for last hour's energy consumption from WWZ."""
 
-    _attr_device_class = SensorDeviceClass.POWER
+    _attr_device_class = SensorDeviceClass.ENERGY
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_has_entity_name = True
-    _attr_name = "Hourly power"
+    _attr_name = "Hourly energy"
     _attr_icon = "mdi:lightning-bolt-outline"
 
     def __init__(
