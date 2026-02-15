@@ -43,6 +43,8 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
 
         now = datetime.now(tz=CET)
 
+        data_date = now
+
         try:
             data = await self.api_client.get_daily_data(meter_id, date=now)
         except WwzApiError as err:
@@ -53,9 +55,9 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
         # If today has no valid data yet, fetch yesterday instead
         if not valid_values:
             _LOGGER.debug("No valid data for today, falling back to yesterday")
-            yesterday = now - timedelta(days=1)
+            data_date = now - timedelta(days=1)
             try:
-                data = await self.api_client.get_daily_data(meter_id, date=yesterday)
+                data = await self.api_client.get_daily_data(meter_id, date=data_date)
             except WwzApiError as err:
                 raise UpdateFailed(f"Error fetching yesterday's data: {err}") from err
             valid_values = [v for v in data.get("values", []) if v.get("status") == 0]
@@ -73,4 +75,5 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
                 break
 
         data["last_hour"] = last_hour_value
+        data["data_date"] = data_date.strftime("%Y-%m-%d")
         return data
