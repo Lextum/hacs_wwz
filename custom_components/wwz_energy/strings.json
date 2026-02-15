@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "WWZ Energy Login",
+        "description": "Enter your WWZ portal credentials and smart meter ID.",
+        "data": {
+          "username": "Email",
+          "password": "Password",
+          "meter_id": "Meter ID"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid username or password.",
+      "cannot_connect": "Could not connect to WWZ API.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This meter is already configured."
+    }
+  }
+}
