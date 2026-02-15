@@ -4,9 +4,9 @@
   "codeowners": [],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/yourusername/hacs_wwz",
+  "documentation": "https://github.com/Lextum/hacs_wwz",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/yourusername/hacs_wwz/issues",
+  "issue_tracker": "https://github.com/Lextum/hacs_wwz/issues",
   "requirements": [],
   "version": "0.1.0"
 }
