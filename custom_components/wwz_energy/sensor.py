@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -61,6 +63,13 @@ class WwzDailyEnergySensor(CoordinatorEntity[WwzEnergyCoordinator], SensorEntity
         return self.coordinator.data.get("daily_total")
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the date the energy data is from."""
+        if self.coordinator.data is None:
+            return {}
+        return {"data_date": self.coordinator.data.get("data_date")}
+
+    @property
     def last_reset(self) -> datetime:
         """Return the start of today as the last reset time."""
         cet = ZoneInfo("Europe/Zurich")
@@ -92,3 +101,10 @@ class WwzHourlyEnergySensor(CoordinatorEntity[WwzEnergyCoordinator], SensorEntit
         if self.coordinator.data is None:
             return None
         return self.coordinator.data.get("last_hour")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the date the energy data is from."""
+        if self.coordinator.data is None:
+            return {}
+        return {"data_date": self.coordinator.data.get("data_date")}
