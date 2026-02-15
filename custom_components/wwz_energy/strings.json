@@ -3,11 +3,10 @@
     "step": {
       "user": {
         "title": "WWZ Energy Login",
-        "description": "Enter your WWZ portal credentials and smart meter ID.",
+        "description": "Enter your WWZ portal credentials.",
         "data": {
           "username": "Email",
-          "password": "Password",
-          "meter_id": "Meter ID"
+          "password": "Password"
         }
       }
     },
