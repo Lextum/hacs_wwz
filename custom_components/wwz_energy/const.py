@@ -11,5 +11,3 @@ API_CONTRACT_ACCOUNTS_PATH = (
 API_METER_POINTS_PATH = "//wwz/rest/WWZMeterProfileViewWWZService/getMeterPoints"
 API_METER_POINT_ID_PATH = "//wwz/rest/WWZMeterProfileViewWWZService/getMeterPointId"
 API_DATA_PATH = "//wwz/rest/WWZSmartMeterService/getDiagramValues"
-
-CONF_METER_ID = "meter_id"

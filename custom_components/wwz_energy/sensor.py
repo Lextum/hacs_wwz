@@ -11,12 +11,12 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy
+from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_METER_ID, DOMAIN
+from .const import DOMAIN
 from .coordinator import WwzEnergyCoordinator
 
 
@@ -27,9 +27,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up WWZ Energy sensors from a config entry."""
     coordinator: WwzEnergyCoordinator = hass.data[DOMAIN][entry.entry_id]
-    meter_id = entry.data[CONF_METER_ID]
+    meter_id = coordinator.api_client.meter_id
 
-    async_add_entities([WwzDailyEnergySensor(coordinator, meter_id)])
+    async_add_entities([
+        WwzDailyEnergySensor(coordinator, meter_id),
+        WwzHourlyEnergySensor(coordinator, meter_id),
+    ])
 
 
 class WwzDailyEnergySensor(CoordinatorEntity[WwzEnergyCoordinator], SensorEntity):
@@ -63,3 +66,29 @@ class WwzDailyEnergySensor(CoordinatorEntity[WwzEnergyCoordinator], SensorEntity
         cet = ZoneInfo("Europe/Zurich")
         now = datetime.now(tz=cet)
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+class WwzHourlyEnergySensor(CoordinatorEntity[WwzEnergyCoordinator], SensorEntity):
+    """Sensor for last hour's energy consumption from WWZ."""
+
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+    _attr_has_entity_name = True
+    _attr_name = "Hourly power"
+    _attr_icon = "mdi:lightning-bolt-outline"
+
+    def __init__(
+        self, coordinator: WwzEnergyCoordinator, meter_id: str
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._meter_id = meter_id
+        self._attr_unique_id = f"wwz_energy_{meter_id}_hourly"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the last hour's energy consumption."""
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.get("last_hour")

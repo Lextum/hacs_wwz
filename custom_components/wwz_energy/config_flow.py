@@ -11,7 +11,7 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
 from .api import WwzApiClient, WwzApiError, WwzAuthError
-from .const import CONF_METER_ID, DOMAIN
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,7 +19,6 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
-        vol.Required(CONF_METER_ID): str,
     }
 )
 
@@ -49,12 +48,11 @@ class WwzEnergyConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error during login")
                 errors["base"] = "unknown"
             else:
-                await self.async_set_unique_id(
-                    f"wwz_energy_{user_input[CONF_METER_ID]}"
-                )
+                meter_id = client.meter_id
+                await self.async_set_unique_id(f"wwz_energy_{meter_id}")
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=f"WWZ Meter {user_input[CONF_METER_ID]}",
+                    title=f"WWZ Meter {meter_id}",
                     data=user_input,
                 )
             finally:
