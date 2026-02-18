@@ -81,7 +81,7 @@ class WwzHourlyEnergySensor(CoordinatorEntity[WwzEnergyCoordinator], SensorEntit
     """Sensor for last hour's energy consumption from WWZ."""
 
     _attr_device_class = SensorDeviceClass.ENERGY
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_has_entity_name = True
     _attr_name = "Hourly energy"
@@ -101,6 +101,13 @@ class WwzHourlyEnergySensor(CoordinatorEntity[WwzEnergyCoordinator], SensorEntit
         if self.coordinator.data is None:
             return None
         return self.coordinator.data.get("last_hour")
+
+    @property
+    def last_reset(self) -> datetime:
+        """Return the start of the current hour as the last reset time."""
+        cet = ZoneInfo("Europe/Zurich")
+        now = datetime.now(tz=cet)
+        return now.replace(minute=0, second=0, microsecond=0)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
