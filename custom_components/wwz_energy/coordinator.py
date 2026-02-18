@@ -145,6 +145,7 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
             source=DOMAIN,
             statistic_id=statistic_id,
             unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+            unit_class="energy",
         )
         async_add_external_statistics(self.hass, metadata, statistics)
         _LOGGER.debug(
