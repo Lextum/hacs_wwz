@@ -6,10 +6,18 @@ from datetime import datetime, timedelta
 import logging
 from zoneinfo import ZoneInfo
 
+from homeassistant.components.recorder import get_instance
+from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.statistics import (
+    async_add_external_statistics,
+    statistics_during_period,
+)
+from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import WwzApiClient, WwzApiError
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,4 +84,71 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
 
         data["last_hour"] = last_hour_value
         data["data_date"] = data_date.strftime("%Y-%m-%d")
+
+        await self._insert_statistics(valid_values)
+
         return data
+
+    async def _insert_statistics(self, values: list[dict]) -> None:
+        """Insert backdated hourly statistics into HA recorder.
+
+        Uses async_add_external_statistics (upsert) so repeated calls for the
+        same timestamps are safe — existing entries are overwritten with the
+        same values, new entries are created at their actual timestamps.
+        """
+        if not values:
+            return
+
+        statistic_id = f"{DOMAIN}:energy_{self.api_client.meter_id}"
+        sorted_values = sorted(values, key=lambda x: x["date"])
+        first_dt = datetime.fromtimestamp(sorted_values[0]["date"] / 1000, tz=CET).replace(minute=0, second=0, microsecond=0)
+
+        # Find the cumulative sum stored just before our first data point so
+        # that today's running total continues from the right baseline.
+        preceding = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            first_dt - timedelta(hours=1),
+            first_dt,
+            {statistic_id},
+            "hour",
+            None,
+            {"sum"},
+        )
+        entries = preceding.get(statistic_id) or []
+        base_sum = float((entries[-1] if entries else {}).get("sum") or 0.0)
+
+        cumulative_sum = base_sum
+        statistics = []
+        for v in sorted_values:
+            cumulative_sum = round(cumulative_sum + (v.get("value") or 0.0), 3)
+            dt = datetime.fromtimestamp(v["date"] / 1000, tz=CET).replace(minute=0, second=0, microsecond=0)
+            statistics.append(
+                StatisticData(
+                    start=dt,
+                    sum=cumulative_sum,
+                    state=round(v.get("value") or 0.0, 3),
+                )
+            )
+            _LOGGER.debug(
+                "  stat: %s -> %.3f kWh (sum: %.3f)",
+                dt.strftime("%Y-%m-%d %H:%M"),
+                v.get("value") or 0.0,
+                cumulative_sum,
+            )
+
+        metadata = StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            name="WWZ Energy",
+            source=DOMAIN,
+            statistic_id=statistic_id,
+            unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+        async_add_external_statistics(self.hass, metadata, statistics)
+        _LOGGER.debug(
+            "Inserted %d backdated statistics for %s (base_sum=%.3f)",
+            len(statistics),
+            statistic_id,
+            base_sum,
+        )
