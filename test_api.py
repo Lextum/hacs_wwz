@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import sys
+from datetime import datetime
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -39,7 +40,8 @@ async def main():
         print(f"Daily total: {data['daily_total']} kWh")
         print(f"Hourly values ({len(data['values'])} entries):")
         for v in data["values"]:
-            print(f"  {v['date']} -> {v['value']} kWh (status: {v['status']})")
+            dt = datetime.fromtimestamp(v["date"] / 1000, tz=ZoneInfo("Europe/Zurich"))
+            print(f"  {dt.strftime('%Y-%m-%d %H:%M')} -> {v['value']} kWh (status: {v['status']})")
 
     except Exception as e:
         print(f"\nERROR: {type(e).__name__}: {e}")
