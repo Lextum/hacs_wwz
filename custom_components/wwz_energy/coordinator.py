@@ -41,40 +41,52 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
         self.api_client = api_client
 
     async def _async_update_data(self) -> dict:
-        """Fetch energy data from the API.
+        """Fetch the most recent available energy data and push valid hourly readings to statistics.
 
-        Tries today first; if no valid readings yet, falls back to yesterday.
+        The WWZ meter reports data with a delay: today's data has status=3
+        (not yet available). We walk back up to MAX_LOOKBACK_DAYS days to find
+        the most recent day that has valid (status=0) readings.
         """
+        MAX_LOOKBACK_DAYS = 7
+
         meter_id = self.api_client.meter_id
         if not meter_id:
             raise UpdateFailed("No meter ID available")
 
         now = datetime.now(tz=CET)
-
+        data = None
+        valid_values: list[dict] = []
         data_date = now
 
-        try:
-            data = await self.api_client.get_daily_data(meter_id, date=now)
-        except WwzApiError as err:
-            raise UpdateFailed(f"Error fetching WWZ data: {err}") from err
-
-        valid_values = [v for v in data.get("values", []) if v.get("status") == 0]
-
-        # If today has no valid data yet, fetch yesterday instead
-        if not valid_values:
-            _LOGGER.debug("No valid data for today, falling back to yesterday")
-            data_date = now - timedelta(days=1)
+        for days_back in range(MAX_LOOKBACK_DAYS):
+            fetch_date = now - timedelta(days=days_back)
             try:
-                data = await self.api_client.get_daily_data(meter_id, date=data_date)
+                data = await self.api_client.get_daily_data(meter_id, date=fetch_date)
             except WwzApiError as err:
-                raise UpdateFailed(f"Error fetching yesterday's data: {err}") from err
-            valid_values = [v for v in data.get("values", []) if v.get("status") == 0]
+                raise UpdateFailed(f"Error fetching WWZ data: {err}") from err
+
+            valid_values = [
+                v for v in data.get("values", [])
+                if v.get("status") == 0 or (v.get("status") == 3 and v.get("value", 0) > 0)
+            ]
+            _LOGGER.debug(
+                "Date %s: %d valid values (status==0) out of %d total",
+                fetch_date.strftime("%Y-%m-%d"),
+                len(valid_values),
+                len(data.get("values", [])),
+            )
+            if valid_values:
+                data_date = fetch_date
+                break
+
+        if not valid_values:
+            _LOGGER.warning("No valid energy readings found in the last %d days", MAX_LOOKBACK_DAYS)
 
         # Recalculate daily_total from valid values only
         daily_total = sum(v.get("value", 0) for v in valid_values)
         data["daily_total"] = round(daily_total, 3)
 
-        # Last hour with actual data
+        # Last completed hour with actual data
         now_ms = int(now.timestamp() * 1000)
         last_hour_value = None
         for v in reversed(valid_values):
