@@ -6,7 +6,11 @@
         "description": "Enter your WWZ portal credentials.",
         "data": {
           "username": "Email",
-          "password": "Password"
+          "password": "Password",
+          "lookback_days": "Lookback days"
+        },
+        "data_description": {
+          "lookback_days": "Number of days to fetch from the API (1-30)."
         }
       }
     },
@@ -17,6 +21,18 @@
     },
     "abort": {
       "already_configured": "This meter is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "lookback_days": "Lookback days"
+        },
+        "data_description": {
+          "lookback_days": "Number of days to fetch from the API (1-30)."
+        }
+      }
     }
   }
 }
