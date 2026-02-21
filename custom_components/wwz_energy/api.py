@@ -168,27 +168,43 @@ class WwzApiClient:
         """Return the discovered meter ID."""
         return self._meter_id
 
-    async def get_daily_data(
-        self, meter_id: str, date: datetime | None = None
+    async def get_hourly_data(
+        self,
+        meter_id: str,
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
     ) -> dict:
-        """Fetch hourly energy data for a given day.
+        """Fetch hourly energy data for a date range.
 
-        Returns dict with "values", "daily_total", and "unit".
+        Args:
+            meter_id: The smart meter ID.
+            from_date: Start date (defaults to today).
+            to_date: End date (defaults to from_date, i.e. single day).
+
+        Returns dict with "values" and "unit".
         """
         cet = ZoneInfo("Europe/Zurich")
-        if date is None:
-            date = datetime.now(tz=cet)
+        if from_date is None:
+            from_date = datetime.now(tz=cet)
+        if to_date is None:
+            to_date = from_date
 
-        start_of_day = date.astimezone(cet).replace(hour=0, minute=0, second=0, microsecond=0)
-        epoch_ms = int(start_of_day.timestamp() * 1000)
+        from_midnight = from_date.astimezone(cet).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        to_midnight = to_date.astimezone(cet).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        from_ms = int(from_midnight.timestamp() * 1000)
+        to_ms = int(to_midnight.timestamp() * 1000)
 
         session = await self._ensure_session()
         url = f"{API_BASE_URL}{API_DATA_PATH}"
         params = {
-            "from": str(epoch_ms),
+            "from": str(from_ms),
             "id": meter_id,
             "interval": "HOUR",
-            "until": str(epoch_ms),
+            "until": str(to_ms),
         }
 
         try:
@@ -207,11 +223,12 @@ class WwzApiClient:
         # Re-authenticate on session expiry
         if inner is None:
             msg_text = (
-                data.get("frontEndMessage", {}).get("message", "")
-                if data
-                else ""
+                data.get("frontEndMessage", {}).get("message", "") if data else ""
             )
-            if "not logged in" in msg_text.lower() or "unauthorized" in msg_text.lower():
+            if (
+                "not logged in" in msg_text.lower()
+                or "unauthorized" in msg_text.lower()
+            ):
                 _LOGGER.debug("Session expired, re-authenticating")
                 await self.login()
                 session = await self._ensure_session()
@@ -236,11 +253,9 @@ class WwzApiClient:
             raise WwzApiError(f"API returned no data: {msg_text}")
 
         values = inner.get("values", [])
-        daily_total = sum(v.get("value", 0) for v in values)
 
         return {
             "values": values,
-            "daily_total": round(daily_total, 3),
             "unit": inner.get("unit", "kWh"),
         }
 
