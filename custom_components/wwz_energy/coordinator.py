@@ -29,7 +29,7 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
     """Coordinator to fetch WWZ energy data."""
 
     def __init__(
-        self, hass: HomeAssistant, api_client: WwzApiClient
+        self, hass: HomeAssistant, api_client: WwzApiClient, lookback_days: int = 2
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -39,6 +39,7 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
             update_interval=UPDATE_INTERVAL,
         )
         self.api_client = api_client
+        self.lookback_days = lookback_days
 
     async def _async_update_data(self) -> dict:
         """Fetch the most recent available energy data and push valid hourly readings to statistics.
@@ -57,11 +58,10 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
         valid_values: list[dict] = []
         data_date = now
 
-        today = now - timedelta(days=0)
-        yesterday = now - timedelta(days=1)
+        from_date = now - timedelta(days=self.lookback_days)
 
         try:
-            data = await self.api_client.get_hourly_data(meter_id, from_date=yesterday, to_date=today)
+            data = await self.api_client.get_hourly_data(meter_id, from_date=from_date, to_date=now)
         except WwzApiError as err:
             raise UpdateFailed(f"Error fetching WWZ data: {err}") from err
 
@@ -70,8 +70,7 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
             if v.get("status") == 0 or (v.get("status") == 3 and v.get("value", 0) > 0)
         ]
         _LOGGER.debug(
-            "Date %s: %d valid values (status==0) out of %d total",
-            yesterday.strftime("%Y-%m-%d"),
+            "%d valid values (status==0) out of %d total",
             len(valid_values),
             len(data.get("values", [])),
             )
