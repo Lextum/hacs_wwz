@@ -34,11 +34,12 @@ async def main():
 
         # Fetch yesterday's data (today may not have data yet)
         yesterday = datetime.now(tz=ZoneInfo("Europe/Zurich")) - timedelta(days=1)
-        print(f"\n--- Fetch data for {yesterday.date()} ---")
-        data = await client.get_daily_data(meter_id, date=yesterday)
+        today = datetime.now(tz=ZoneInfo("Europe/Zurich")) - timedelta(days=0)
+        
+        data = await client.get_hourly_data(meter_id, from_date=yesterday, to_date=today)
         print(f"Unit: {data['unit']}")
-        print(f"Daily total: {data['daily_total']} kWh")
         print(f"Hourly values ({len(data['values'])} entries):")
+        
         for v in data["values"]:
             dt = datetime.fromtimestamp(v["date"] / 1000, tz=ZoneInfo("Europe/Zurich"))
             print(f"  {dt.strftime('%Y-%m-%d %H:%M')} -> {v['value']} kWh (status: {v['status']})")

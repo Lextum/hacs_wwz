@@ -47,7 +47,6 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
         (not yet available). We walk back up to MAX_LOOKBACK_DAYS days to find
         the most recent day that has valid (status=0) readings.
         """
-        MAX_LOOKBACK_DAYS = 7
 
         meter_id = self.api_client.meter_id
         if not meter_id:
@@ -58,29 +57,27 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
         valid_values: list[dict] = []
         data_date = now
 
-        for days_back in range(MAX_LOOKBACK_DAYS):
-            fetch_date = now - timedelta(days=days_back)
-            try:
-                data = await self.api_client.get_daily_data(meter_id, date=fetch_date)
-            except WwzApiError as err:
-                raise UpdateFailed(f"Error fetching WWZ data: {err}") from err
+        today = now - timedelta(days=0)
+        yesterday = now - timedelta(days=1)
 
-            valid_values = [
-                v for v in data.get("values", [])
-                if v.get("status") == 0 or (v.get("status") == 3 and v.get("value", 0) > 0)
-            ]
-            _LOGGER.debug(
-                "Date %s: %d valid values (status==0) out of %d total",
-                fetch_date.strftime("%Y-%m-%d"),
-                len(valid_values),
-                len(data.get("values", [])),
+        try:
+            data = await self.api_client.get_hourly_data(meter_id, from_date=yesterday, to_date=today)
+        except WwzApiError as err:
+            raise UpdateFailed(f"Error fetching WWZ data: {err}") from err
+
+        valid_values = [
+            v for v in data.get("values", [])
+            if v.get("status") == 0 or (v.get("status") == 3 and v.get("value", 0) > 0)
+        ]
+        _LOGGER.debug(
+            "Date %s: %d valid values (status==0) out of %d total",
+            yesterday.strftime("%Y-%m-%d"),
+            len(valid_values),
+            len(data.get("values", [])),
             )
-            if valid_values:
-                data_date = fetch_date
-                break
 
         if not valid_values:
-            _LOGGER.warning("No valid energy readings found in the last %d days", MAX_LOOKBACK_DAYS)
+            _LOGGER.warning("No valid energy readings found.")
 
         # Recalculate daily_total from valid values only
         daily_total = sum(v.get("value", 0) for v in valid_values)
