@@ -1,11 +1,13 @@
 # WWZ Energy
 
-A Home Assistant custom integration that fetches daily energy consumption data from [WWZ](https://www.wwz.ch/) smart meters via the WWZ customer portal API.
+A Home Assistant custom integration that fetches energy consumption data from [WWZ](https://www.wwz.ch/) smart meters via the WWZ customer portal API.
 
 ## Features
 
-- Daily energy consumption sensor (kWh), updated hourly
+- Energy dashboard integration with hourly statistics
+- Configurable lookback period (1–365 days, default: 2 days)
 - Automatic session management and re-authentication
+- Automatic meter ID discovery
 - Configurable via the Home Assistant UI
 
 ## Installation
@@ -26,16 +28,23 @@ Copy the `custom_components/wwz_energy` folder into your Home Assistant `config/
 
 1. Go to **Settings** > **Devices & Services** > **Add Integration**
 2. Search for **WWZ Energy**
-3. Enter your WWZ portal credentials (email and password) and your smart meter ID
+3. Enter your WWZ portal credentials (email and password)
+4. Optionally adjust the lookback period (how many days of historical data to fetch)
 
-## Sensor
+The meter ID is discovered automatically during setup.
 
-| Entity | Description | Unit | Update interval |
-|---|---|---|---|
-| Daily energy | Total energy consumption for the current day | kWh | 1 hour |
+The lookback period can be changed later under **Devices & Services** > **WWZ Energy** > **Configure**.
 
-The sensor resets at midnight (Europe/Zurich timezone).
+## Energy Dashboard
 
-## Finding your meter ID
+The integration records hourly energy statistics that can be used directly in the Home Assistant **Energy Dashboard**:
 
-Your meter ID can be found in the [WWZ customer portal](https://portal.wwz.ch/) under your contract/meter details.
+1. Go to **Settings** > **Dashboards** > **Energy**
+2. Under **Electricity grid**, click **Add consumption**
+3. Select the WWZ energy statistic
+
+Data is updated every hour and backfilled for the configured lookback period.
+
+## Known Issues
+
+- The sensor entities (daily/hourly energy) are currently not working. Energy tracking via the Energy Dashboard works as expected.
