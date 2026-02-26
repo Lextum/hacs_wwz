@@ -1,6 +1,10 @@
-# WWZ Energy
+<p align="center">
+  <img src="custom_components/wwz_energy/brand/icon.png" alt="WWZ Energy" width="128">
+</p>
 
-A Home Assistant custom integration that fetches energy consumption data from [WWZ](https://www.wwz.ch/) smart meters via the WWZ customer portal API.
+<p align="center">
+  A Home Assistant custom integration that fetches energy consumption data from <a href="https://www.wwz.ch/">WWZ</a> smart meters via the WWZ customer portal API.
+</p>
 
 ## Features
 
