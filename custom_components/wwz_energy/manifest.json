@@ -3,7 +3,7 @@
   "name": "WWZ Energy",
   "codeowners": [],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["recorder"],
   "documentation": "https://github.com/Lextum/hacs_wwz",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/Lextum/hacs_wwz/issues",

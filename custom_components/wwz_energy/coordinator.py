@@ -4,24 +4,20 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import logging
+import re
 from zoneinfo import ZoneInfo
 
-from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticData, StatisticMeanType, StatisticMetaData
-from homeassistant.components.recorder.statistics import (
-    async_add_external_statistics,
-    statistics_during_period,
-)
+from homeassistant.components.recorder.statistics import async_add_external_statistics
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import WwzApiClient, WwzApiError
-from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-UPDATE_INTERVAL = timedelta(hours=6)
+UPDATE_INTERVAL = timedelta(hours=1)
 CET = ZoneInfo("Europe/Zurich")
 
 
@@ -29,7 +25,11 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
     """Coordinator to fetch WWZ energy data."""
 
     def __init__(
-        self, hass: HomeAssistant, api_client: WwzApiClient, lookback_days: int = 2
+        self,
+        hass: HomeAssistant,
+        api_client: WwzApiClient,
+        entry_unique_id: str,
+        lookback_days: int = 2,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -40,15 +40,13 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
         )
         self.api_client = api_client
         self.lookback_days = lookback_days
+        slug = re.sub(r"[^a-z0-9]", "_", entry_unique_id.lower()).strip("_")
+        self.energy_statistic_id = f"wwz_energy:{slug}_energy_consumption"
+        self.cost_statistic_id = f"wwz_energy:{slug}_energy_cost"
+        self.price_per_kwh: float | None = None
 
     async def _async_update_data(self) -> dict:
-        """Fetch the most recent available energy data and push valid hourly readings to statistics.
-
-        The WWZ meter reports data with a delay: today's data has status=3
-        (not yet available). We walk back up to MAX_LOOKBACK_DAYS days to find
-        the most recent day that has valid (status=0) readings.
-        """
-
+        """Fetch energy data and write external statistics for consumption and cost."""
         meter_id = self.api_client.meter_id
         if not meter_id:
             raise UpdateFailed("No meter ID available")
@@ -61,85 +59,80 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
         except WwzApiError as err:
             raise UpdateFailed(f"Error fetching WWZ data: {err}") from err
 
-        valid_values = [
-            v for v in data.get("values", [])
-            if v.get("status") == 0 or (v.get("status") == 3 and v.get("value", 0) > 0)
-        ]
+        # Filter valid values and deduplicate by timestamp (prefer status=0)
+        seen: dict[int, dict] = {}
+        for v in data.get("values", []):
+            if v.get("status") == 0 or (v.get("status") == 3 and v.get("value", 0) > 0):
+                ts = v["date"]
+                if ts not in seen or v.get("status") == 0:
+                    seen[ts] = v
+
+        sorted_values = sorted(seen.values(), key=lambda x: x["date"])
+
         _LOGGER.debug(
-            "%d valid values (status==0) out of %d total",
-            len(valid_values),
+            "%d valid values out of %d total",
+            len(sorted_values),
             len(data.get("values", [])),
-            )
+        )
 
-        if not valid_values:
-            _LOGGER.warning("No valid energy readings found.")
-
-        await self._insert_statistics(valid_values)
+        if sorted_values:
+            await self._insert_statistics(sorted_values)
 
         return data
 
-    async def _insert_statistics(self, values: list[dict]) -> None:
-        """Insert backdated hourly statistics into HA recorder.
+    async def _insert_statistics(self, sorted_values: list[dict]) -> None:
+        """Write hourly energy consumption and cost as external statistics."""
+        energy_stats: list[StatisticData] = []
+        cost_stats: list[StatisticData] = []
+        energy_sum = 0.0
+        cost_sum = 0.0
 
-        Uses async_add_external_statistics (upsert) so repeated calls for the
-        same timestamps are safe — existing entries are overwritten with the
-        same values, new entries are created at their actual timestamps.
-        """
-        if not values:
-            return
-
-        statistic_id = f"{DOMAIN}:energy_{self.api_client.meter_id}"
-        sorted_values = sorted(values, key=lambda x: x["date"])
-        first_dt = datetime.fromtimestamp(sorted_values[0]["date"] / 1000, tz=CET).replace(minute=0, second=0, microsecond=0)
-
-        # Find the cumulative sum stored just before our first data point so
-        # that today's running total continues from the right baseline.
-        preceding = await get_instance(self.hass).async_add_executor_job(
-            statistics_during_period,
-            self.hass,
-            first_dt - timedelta(hours=1),
-            first_dt,
-            {statistic_id},
-            "hour",
-            None,
-            {"sum"},
-        )
-        entries = preceding.get(statistic_id) or []
-        base_sum = float((entries[-1] if entries else {}).get("sum") or 0.0)
-
-        cumulative_sum = base_sum
-        statistics = []
         for v in sorted_values:
-            cumulative_sum = round(cumulative_sum + (v.get("value") or 0.0), 3)
-            dt = datetime.fromtimestamp(v["date"] / 1000, tz=CET).replace(minute=0, second=0, microsecond=0)
-            statistics.append(
-                StatisticData(
-                    start=dt,
-                    sum=cumulative_sum,
-                    state=round(v.get("value") or 0.0, 3),
-                )
+            kwh = v.get("value") or 0.0
+            energy_sum = round(energy_sum + kwh, 3)
+            dt = datetime.fromtimestamp(v["date"] / 1000, tz=CET).replace(
+                minute=0, second=0, microsecond=0
             )
-            _LOGGER.debug(
-                "  stat: %s -> %.3f kWh (sum: %.3f)",
-                dt.strftime("%Y-%m-%d %H:%M"),
-                v.get("value") or 0.0,
-                cumulative_sum,
+            energy_stats.append(
+                StatisticData(start=dt, state=round(kwh, 3), sum=energy_sum)
             )
 
-        metadata = StatisticMetaData(
+            if self.price_per_kwh is not None:
+                cost = round(kwh * self.price_per_kwh, 4)
+                cost_sum = round(cost_sum + cost, 4)
+                cost_stats.append(
+                    StatisticData(start=dt, state=cost, sum=cost_sum)
+                )
+
+        energy_metadata = StatisticMetaData(
             has_mean=False,
             mean_type=StatisticMeanType.NONE,
             has_sum=True,
-            name="WWZ Energy",
-            source=DOMAIN,
-            statistic_id=statistic_id,
+            name="WWZ Energy Consumption",
+            source="wwz_energy",
+            statistic_id=self.energy_statistic_id,
             unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
             unit_class="energy",
         )
-        async_add_external_statistics(self.hass, metadata, statistics)
+        async_add_external_statistics(self.hass, energy_metadata, energy_stats)
         _LOGGER.debug(
-            "Inserted %d backdated statistics for %s (base_sum=%.3f)",
-            len(statistics),
-            statistic_id,
-            base_sum,
+            "Inserted %d energy statistics for %s",
+            len(energy_stats), self.energy_statistic_id,
         )
+
+        if cost_stats:
+            cost_metadata = StatisticMetaData(
+                has_mean=False,
+                mean_type=StatisticMeanType.NONE,
+                has_sum=True,
+                name="WWZ Energy Cost",
+                source="wwz_energy",
+                statistic_id=self.cost_statistic_id,
+                unit_of_measurement="CHF",
+                unit_class=None,
+            )
+            async_add_external_statistics(self.hass, cost_metadata, cost_stats)
+            _LOGGER.debug(
+                "Inserted %d cost statistics for %s (price=%.4f CHF/kWh)",
+                len(cost_stats), self.cost_statistic_id, self.price_per_kwh,
+            )
