@@ -61,9 +61,11 @@ class WwzApiClient:
     async def _ensure_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             jar = aiohttp.CookieJar(unsafe=True)
+            timeout = aiohttp.ClientTimeout(total=30)
             self._session = aiohttp.ClientSession(
                 headers=_COMMON_HEADERS,
                 cookie_jar=jar,
+                timeout=timeout,
             )
         return self._session
 
@@ -143,7 +145,7 @@ class WwzApiClient:
                 params={"contractAccount": self._contract_account_id},
             ) as resp:
                 body = await resp.json()
-                contracts = body.get("data", {}).get("contracts", [])
+                contracts = (body.get("data") or {}).get("contracts", [])
                 if not contracts:
                     raise WwzApiError("No meter points found")
                 self._meter_number = contracts[0].get("meterPointNumber")
@@ -158,7 +160,10 @@ class WwzApiClient:
                 params={"meterNumber": self._meter_number},
             ) as resp:
                 body = await resp.json()
-                self._meter_id = str(body.get("data", {}).get("meterId", ""))
+                data = body.get("data") or {}
+                self._meter_id = str(data.get("meterId", ""))
+                if not self._meter_id:
+                    raise WwzApiError("API returned no meter ID")
                 _LOGGER.debug("Meter ID: %s", self._meter_id)
         except aiohttp.ClientError as err:
             raise WwzApiError(f"Failed to get meter point ID: {err}") from err
