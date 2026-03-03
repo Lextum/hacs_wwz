@@ -12,6 +12,20 @@
         "data_description": {
           "lookback_days": "Number of days to fetch from the API (1-30)."
         }
+      },
+      "tariff": {
+        "title": "Tariff Selection",
+        "description": "Select your electricity tariff components to calculate the total price.",
+        "data": {
+          "energy_tariff": "Energy product",
+          "grid_tariff": "Grid tariff",
+          "municipality": "Municipality"
+        },
+        "data_description": {
+          "energy_tariff": "Your WWZ energy product.",
+          "grid_tariff": "Your grid usage tariff.",
+          "municipality": "Your municipality for local fees (select 'none' if not applicable)."
+        }
       }
     },
     "error": {
@@ -27,11 +41,24 @@
     "step": {
       "init": {
         "data": {
-          "lookback_days": "Lookback days"
+          "lookback_days": "Lookback days",
+          "energy_tariff": "Energy product",
+          "grid_tariff": "Grid tariff",
+          "municipality": "Municipality"
         },
         "data_description": {
-          "lookback_days": "Number of days to fetch from the API (1-30)."
+          "lookback_days": "Number of days to fetch from the API (1-30).",
+          "energy_tariff": "Your WWZ energy product.",
+          "grid_tariff": "Your grid usage tariff.",
+          "municipality": "Your municipality for local fees (select 'none' if not applicable)."
         }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "electricity_price": {
+        "name": "Electricity price"
       }
     }
   }
