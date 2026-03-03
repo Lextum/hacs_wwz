@@ -11,9 +11,15 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
+from homeassistant.helpers.selector import (
+    BooleanSelector,
+    SelectSelector,
+    SelectSelectorConfig,
+)
 
 from .api import WwzApiClient, WwzApiError, WwzAuthError
 from .const import (
+    CONF_ENABLE_PRICE_SENSOR,
     CONF_ENERGY_TARIFF,
     CONF_GRID_TARIFF,
     CONF_LOOKBACK_DAYS,
@@ -22,6 +28,7 @@ from .const import (
     DEFAULT_GRID_TARIFF,
     DEFAULT_LOOKBACK_DAYS,
     DOMAIN,
+    ZUG_MUNICIPALITIES,
 )
 from .tariff import TariffData, fetch_tariff_data
 
@@ -34,10 +41,9 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional(CONF_LOOKBACK_DAYS, default=DEFAULT_LOOKBACK_DAYS): vol.All(
             int, vol.Range(min=1, max=365)
         ),
+        vol.Optional(CONF_ENABLE_PRICE_SENSOR, default=False): BooleanSelector(),
     }
 )
-
-NONE_MUNICIPALITY = "none"
 
 
 async def _fetch_tariff_or_none() -> TariffData | None:
@@ -67,26 +73,27 @@ def _build_tariff_schema(
     """Build a voluptuous schema with tariff dropdown options."""
     energy_names = tariff_data.energy_product_names()
     grid_names = tariff_data.grid_tariff_names()
-    municipality_names = tariff_data.municipality_names()
 
     if default_energy not in energy_names and energy_names:
         default_energy = energy_names[0]
     if default_grid not in grid_names and grid_names:
         default_grid = grid_names[0]
 
-    muni_options = [NONE_MUNICIPALITY] + municipality_names
-    default_muni = default_municipality if default_municipality in municipality_names else NONE_MUNICIPALITY
+    tariff_municipalities = tariff_data.municipality_names()
+    remaining = [m for m in ZUG_MUNICIPALITIES if m not in tariff_municipalities]
+    all_municipalities = sorted(tariff_municipalities + remaining)
+    default_muni = default_municipality if default_municipality in all_municipalities else all_municipalities[0]
 
     return vol.Schema(
         {
-            vol.Required(CONF_ENERGY_TARIFF, default=default_energy): vol.In(
-                energy_names
+            vol.Required(CONF_ENERGY_TARIFF, default=default_energy): SelectSelector(
+                SelectSelectorConfig(options=energy_names)
             ),
-            vol.Required(CONF_GRID_TARIFF, default=default_grid): vol.In(
-                grid_names
+            vol.Required(CONF_GRID_TARIFF, default=default_grid): SelectSelector(
+                SelectSelectorConfig(options=grid_names)
             ),
-            vol.Optional(CONF_MUNICIPALITY, default=default_muni): vol.In(
-                muni_options
+            vol.Required(CONF_MUNICIPALITY, default=default_muni): SelectSelector(
+                SelectSelectorConfig(options=all_municipalities)
             ),
         }
     )
@@ -95,11 +102,12 @@ def _build_tariff_schema(
 class WwzEnergyConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for WWZ Energy."""
 
-    VERSION = 2
+    VERSION = 4
 
     def __init__(self) -> None:
         super().__init__()
         self._user_data: dict[str, Any] = {}
+        self._user_options: dict[str, Any] = {}
         self._meter_id: str | None = None
 
     @staticmethod
@@ -107,6 +115,17 @@ class WwzEnergyConfigFlow(ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(config_entry: ConfigEntry) -> WwzEnergyOptionsFlow:
         """Get the options flow."""
         return WwzEnergyOptionsFlow()
+
+    def _create_entry(self, tariff_options: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Create the config entry with current state."""
+        options = dict(self._user_options)
+        if tariff_options:
+            options.update(tariff_options)
+        return self.async_create_entry(
+            title=f"WWZ Meter {self._meter_id}",
+            data=self._user_data,
+            options=options,
+        )
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -122,15 +141,29 @@ class WwzEnergyConfigFlow(ConfigFlow, domain=DOMAIN):
                 await client.login()
             except WwzAuthError:
                 errors["base"] = "invalid_auth"
-            except WwzApiError:
+            except (WwzApiError, TimeoutError):
                 errors["base"] = "cannot_connect"
             except Exception:
                 _LOGGER.exception("Unexpected error during login")
                 errors["base"] = "unknown"
             else:
                 self._meter_id = client.meter_id
-                self._user_data = user_input
-                return await self.async_step_tariff()
+                self._user_data = {
+                    CONF_USERNAME: user_input[CONF_USERNAME],
+                    CONF_PASSWORD: user_input[CONF_PASSWORD],
+                }
+                self._user_options = {
+                    CONF_LOOKBACK_DAYS: user_input.get(CONF_LOOKBACK_DAYS, DEFAULT_LOOKBACK_DAYS),
+                    CONF_ENABLE_PRICE_SENSOR: user_input.get(CONF_ENABLE_PRICE_SENSOR, False),
+                }
+
+                await self.async_set_unique_id(self._meter_id)
+                self._abort_if_unique_id_configured()
+
+                if self._user_options[CONF_ENABLE_PRICE_SENSOR]:
+                    return await self.async_step_tariff()
+
+                return self._create_entry()
             finally:
                 await client.close()
 
@@ -145,37 +178,19 @@ class WwzEnergyConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle tariff selection step."""
         if user_input is not None:
-            municipality = user_input.get(CONF_MUNICIPALITY, "")
-            if municipality == NONE_MUNICIPALITY:
-                municipality = ""
-
-            await self.async_set_unique_id(f"wwz_energy_{self._meter_id}")
-            self._abort_if_unique_id_configured()
-
-            return self.async_create_entry(
-                title=f"WWZ Meter {self._meter_id}",
-                data=self._user_data,
-                options={
-                    CONF_ENERGY_TARIFF: user_input[CONF_ENERGY_TARIFF],
-                    CONF_GRID_TARIFF: user_input[CONF_GRID_TARIFF],
-                    CONF_MUNICIPALITY: municipality,
-                },
-            )
+            return self._create_entry({
+                CONF_ENERGY_TARIFF: user_input[CONF_ENERGY_TARIFF],
+                CONF_GRID_TARIFF: user_input[CONF_GRID_TARIFF],
+                CONF_MUNICIPALITY: user_input.get(CONF_MUNICIPALITY, ""),
+            })
 
         tariff_data = await _fetch_tariff_or_none()
         if tariff_data is None:
-            # Cannot fetch tariffs — create entry with defaults
-            await self.async_set_unique_id(f"wwz_energy_{self._meter_id}")
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(
-                title=f"WWZ Meter {self._meter_id}",
-                data=self._user_data,
-                options={
-                    CONF_ENERGY_TARIFF: DEFAULT_ENERGY_TARIFF,
-                    CONF_GRID_TARIFF: DEFAULT_GRID_TARIFF,
-                    CONF_MUNICIPALITY: "",
-                },
-            )
+            return self._create_entry({
+                CONF_ENERGY_TARIFF: DEFAULT_ENERGY_TARIFF,
+                CONF_GRID_TARIFF: DEFAULT_GRID_TARIFF,
+                CONF_MUNICIPALITY: "",
+            })
 
         return self.async_show_form(
             step_id="tariff",
@@ -191,11 +206,9 @@ class WwzEnergyOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
-            municipality = user_input.get(CONF_MUNICIPALITY, "")
-            if municipality == NONE_MUNICIPALITY:
-                municipality = ""
             data = {
                 CONF_LOOKBACK_DAYS: user_input[CONF_LOOKBACK_DAYS],
+                CONF_ENABLE_PRICE_SENSOR: user_input.get(CONF_ENABLE_PRICE_SENSOR, False),
                 CONF_ENERGY_TARIFF: user_input.get(
                     CONF_ENERGY_TARIFF,
                     self.config_entry.options.get(CONF_ENERGY_TARIFF, DEFAULT_ENERGY_TARIFF),
@@ -204,13 +217,18 @@ class WwzEnergyOptionsFlow(OptionsFlow):
                     CONF_GRID_TARIFF,
                     self.config_entry.options.get(CONF_GRID_TARIFF, DEFAULT_GRID_TARIFF),
                 ),
-                CONF_MUNICIPALITY: municipality or self.config_entry.options.get(CONF_MUNICIPALITY, ""),
+                CONF_MUNICIPALITY: user_input.get(
+                    CONF_MUNICIPALITY,
+                    self.config_entry.options.get(CONF_MUNICIPALITY, ""),
+                ),
             }
             return self.async_create_entry(title="", data=data)
 
         current_lookback = self.config_entry.options.get(
-            CONF_LOOKBACK_DAYS,
-            self.config_entry.data.get(CONF_LOOKBACK_DAYS, DEFAULT_LOOKBACK_DAYS),
+            CONF_LOOKBACK_DAYS, DEFAULT_LOOKBACK_DAYS
+        )
+        current_enable_price = self.config_entry.options.get(
+            CONF_ENABLE_PRICE_SENSOR, False
         )
         current_energy = self.config_entry.options.get(
             CONF_ENERGY_TARIFF, DEFAULT_ENERGY_TARIFF
@@ -222,26 +240,21 @@ class WwzEnergyOptionsFlow(OptionsFlow):
 
         tariff_data = await _fetch_tariff_or_none()
 
+        base_fields: dict[vol.Optional | vol.Required, Any] = {
+            vol.Optional(
+                CONF_LOOKBACK_DAYS, default=current_lookback
+            ): vol.All(int, vol.Range(min=1, max=365)),
+            vol.Optional(
+                CONF_ENABLE_PRICE_SENSOR, default=current_enable_price
+            ): BooleanSelector(),
+        }
+
         if tariff_data is not None:
             tariff_schema = _build_tariff_schema(
                 tariff_data, current_energy, current_grid, current_municipality
             )
-            # Merge lookback into tariff schema fields
-            schema = vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_LOOKBACK_DAYS, default=current_lookback
-                    ): vol.All(int, vol.Range(min=1, max=365)),
-                    **tariff_schema.schema,
-                }
-            )
+            schema = vol.Schema({**base_fields, **tariff_schema.schema})
         else:
-            schema = vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_LOOKBACK_DAYS, default=current_lookback
-                    ): vol.All(int, vol.Range(min=1, max=365)),
-                }
-            )
+            schema = vol.Schema(base_fields)
 
         return self.async_show_form(step_id="init", data_schema=schema)
