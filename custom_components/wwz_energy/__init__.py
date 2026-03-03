@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
 from .api import WwzApiClient
 from .const import CONF_LOOKBACK_DAYS, DEFAULT_LOOKBACK_DAYS, DOMAIN
 from .coordinator import WwzEnergyCoordinator
-
-PLATFORMS = [Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -30,7 +28,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
@@ -42,10 +39,6 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-    if unload_ok:
-        coordinator: WwzEnergyCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
-        await coordinator.api_client.close()
-
-    return unload_ok
+    coordinator: WwzEnergyCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
+    await coordinator.api_client.close()
+    return True

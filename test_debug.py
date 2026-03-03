@@ -25,18 +25,22 @@ async def main():
         await client.login()
         meter_id = client.meter_id
 
-        for label, date in [
-            ("Today", datetime.now(tz=CET)),
-            ("Yesterday", datetime.now(tz=CET) - timedelta(days=1)),
+        now = datetime.now(tz=CET)
+        yesterday = now - timedelta(days=1)
+
+        for label, from_date, to_date in [
+            ("Today", now, now),
+            ("Yesterday", yesterday, yesterday),
         ]:
-            data = await client.get_daily_data(meter_id, date=date)
-            valid = [v for v in data["values"] if v["status"] == 0]
-            pending = [v for v in data["values"] if v["status"] == 3]
-            print(f"\n{label} ({date.date()}):")
-            print(f"  Total entries: {len(data['values'])}")
+            data = await client.get_hourly_data(meter_id, from_date=from_date, to_date=to_date)
+            values = data.get("values", [])
+            valid = [v for v in values if v["status"] == 0]
+            pending = [v for v in values if v["status"] == 3]
+            print(f"\n{label} ({from_date.date()}):")
+            print(f"  Total entries: {len(values)}")
             print(f"  Valid (status=0): {len(valid)}")
             print(f"  Pending (status=3): {len(pending)}")
-            print(f"  daily_total: {data['daily_total']} kWh")
+            print(f"  Sum: {sum(v.get('value', 0) for v in valid)} kWh")
             if valid:
                 print(f"  Last valid: {valid[-1]}")
 

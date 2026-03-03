@@ -54,10 +54,6 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
             raise UpdateFailed("No meter ID available")
 
         now = datetime.now(tz=CET)
-        data = None
-        valid_values: list[dict] = []
-        data_date = now
-
         from_date = now - timedelta(days=self.lookback_days)
 
         try:
@@ -77,21 +73,6 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
 
         if not valid_values:
             _LOGGER.warning("No valid energy readings found.")
-
-        # Recalculate daily_total from valid values only
-        daily_total = sum(v.get("value", 0) for v in valid_values)
-        data["daily_total"] = round(daily_total, 3)
-
-        # Last completed hour with actual data
-        now_ms = int(now.timestamp() * 1000)
-        last_hour_value = None
-        for v in reversed(valid_values):
-            if v.get("date", 0) <= now_ms:
-                last_hour_value = v.get("value", 0)
-                break
-
-        data["last_hour"] = last_hour_value
-        data["data_date"] = data_date.strftime("%Y-%m-%d")
 
         await self._insert_statistics(valid_values)
 

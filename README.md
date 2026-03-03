@@ -49,6 +49,3 @@ The integration records hourly energy statistics that can be used directly in th
 
 Data is updated every hour and backfilled for the configured lookback period.
 
-## Known Issues
-
-- The sensor entities (daily/hourly energy) are currently not working. Energy tracking via the Energy Dashboard works as expected.
