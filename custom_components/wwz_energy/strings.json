@@ -8,11 +8,11 @@
           "username": "Email",
           "password": "Password",
           "lookback_days": "Lookback Days",
-          "enable_price_sensor": "Enable Electricity Price Sensor"
+          "enable_price_sensor": "Enable Cost Tracking"
         },
         "data_description": {
-          "lookback_days": "Number of days to fetch from the API (1-30).",
-          "enable_price_sensor": "Creates a sensor showing your current electricity price based on your tariff selection."
+          "lookback_days": "Number of days to fetch from the API (1-365).",
+          "enable_price_sensor": "Calculates energy cost as an external statistic based on your tariff selection."
         }
       },
       "tariff": {
@@ -44,14 +44,14 @@
       "init": {
         "data": {
           "lookback_days": "Lookback Days",
-          "enable_price_sensor": "Enable Electricity Price Sensor",
+          "enable_price_sensor": "Enable Cost Tracking",
           "energy_tariff": "Energy Product",
           "grid_tariff": "Grid Tariff",
           "municipality": "Municipality"
         },
         "data_description": {
-          "lookback_days": "Number of days to fetch from the API (1-30).",
-          "enable_price_sensor": "Creates a sensor showing your current electricity price based on your tariff selection.",
+          "lookback_days": "Number of days to fetch from the API (1-365).",
+          "enable_price_sensor": "Calculates energy cost as an external statistic based on your tariff selection.",
           "energy_tariff": "Your WWZ energy product.",
           "grid_tariff": "Your grid usage tariff.",
           "municipality": "Your municipality for local fees."
