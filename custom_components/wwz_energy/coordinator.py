@@ -21,7 +21,7 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-UPDATE_INTERVAL = timedelta(hours=1)
+UPDATE_INTERVAL = timedelta(hours=6)
 CET = ZoneInfo("Europe/Zurich")
 
 
