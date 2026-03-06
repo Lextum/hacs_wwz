@@ -34,8 +34,8 @@ _LOGGER = logging.getLogger(__name__)
 TARIFF_UPDATE_INTERVAL = timedelta(hours=24)
 
 
-class WwzTariffCoordinator(DataUpdateCoordinator[TariffData | None]):
-    """Coordinator that caches WWZ tariff data, refetching only on year rollover."""
+class WwzTariffCoordinator(DataUpdateCoordinator[dict[int, TariffData]]):
+    """Coordinator that caches WWZ tariff data per year."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         super().__init__(
@@ -44,43 +44,31 @@ class WwzTariffCoordinator(DataUpdateCoordinator[TariffData | None]):
             name="WWZ Tariff",
             update_interval=TARIFF_UPDATE_INTERVAL,
         )
-        self._cached: TariffData | None = None
+        self._cached: dict[int, TariffData] = {}
 
-    async def _async_update_data(self) -> TariffData | None:
+    async def _async_update_data(self) -> dict[int, TariffData]:
         current_year = datetime.now(tz=ZoneInfo("Europe/Zurich")).year
-
-        if self._cached is not None:
-            try:
-                if self._cached.year == current_year:
-                    return self._cached
-            except ValueError:
-                pass
+        years_needed = [current_year - 1, current_year]
 
         async with aiohttp.ClientSession() as session:
-            try:
-                self._cached = await fetch_tariff_data(session, current_year)
-                return self._cached
-            except aiohttp.ClientResponseError as err:
-                if err.status == 404:
-                    _LOGGER.debug(
-                        "Tariff %d not found, falling back to %d",
-                        current_year,
-                        current_year - 1,
-                    )
-                    try:
-                        self._cached = await fetch_tariff_data(
-                            session, current_year - 1
-                        )
-                        return self._cached
-                    except aiohttp.ClientError:
-                        pass
-                raise UpdateFailed(
-                    f"Failed to fetch tariff data: {err}"
-                ) from err
-            except aiohttp.ClientError as err:
-                raise UpdateFailed(
-                    f"Connection error fetching tariffs: {err}"
-                ) from err
+            for year in years_needed:
+                if year in self._cached:
+                    continue
+                try:
+                    self._cached[year] = await fetch_tariff_data(session, year)
+                except aiohttp.ClientResponseError as err:
+                    if err.status == 404:
+                        _LOGGER.debug("Tariff %d not available", year)
+                    else:
+                        raise UpdateFailed(
+                            f"Failed to fetch tariff data: {err}"
+                        ) from err
+                except aiohttp.ClientError as err:
+                    raise UpdateFailed(
+                        f"Connection error fetching tariffs: {err}"
+                    ) from err
+
+        return {y: t for y, t in self._cached.items() if y in years_needed}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -106,15 +94,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await tariff_coordinator.async_config_entry_first_refresh()
         entry_data["tariff_coordinator"] = tariff_coordinator
 
-        tariff_data = tariff_coordinator.data
-        if tariff_data is not None:
+        tariff_by_year = tariff_coordinator.data
+        if tariff_by_year:
             energy_tariff = entry.options.get(CONF_ENERGY_TARIFF, DEFAULT_ENERGY_TARIFF)
             grid_tariff = entry.options.get(CONF_GRID_TARIFF, DEFAULT_GRID_TARIFF)
             municipality = entry.options.get(CONF_MUNICIPALITY, "")
-            price = tariff_data.calculate_total_price(energy_tariff, grid_tariff, municipality)
-            if price is not None:
-                energy_coordinator.price_per_kwh = price
-                _LOGGER.debug("Set price_per_kwh=%.4f CHF on energy coordinator", price)
+            for year, td in tariff_by_year.items():
+                price = td.calculate_total_price(energy_tariff, grid_tariff, municipality)
+                if price:
+                    energy_coordinator.price_per_kwh_by_year[year] = price
+            _LOGGER.debug(
+                "Set price_per_kwh_by_year=%s on energy coordinator",
+                energy_coordinator.price_per_kwh_by_year,
+            )
 
     try:
         await energy_coordinator.async_config_entry_first_refresh()

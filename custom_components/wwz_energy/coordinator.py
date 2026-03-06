@@ -43,7 +43,7 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
         slug = re.sub(r"[^a-z0-9]", "_", entry_unique_id.lower()).strip("_")
         self.energy_statistic_id = f"wwz_energy:{slug}_energy_consumption"
         self.cost_statistic_id = f"wwz_energy:{slug}_energy_cost"
-        self.price_per_kwh: float | None = None
+        self.price_per_kwh_by_year: dict[int, float] = {}
 
     async def _async_update_data(self) -> dict:
         """Fetch energy data and write external statistics for consumption and cost."""
@@ -97,8 +97,9 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
                 StatisticData(start=dt, state=round(kwh, 3), sum=energy_sum)
             )
 
-            if self.price_per_kwh is not None:
-                cost = round(kwh * self.price_per_kwh, 4)
+            price = self.price_per_kwh_by_year.get(dt.year)
+            if price is not None:
+                cost = round(kwh * price, 4)
                 cost_sum = round(cost_sum + cost, 4)
                 cost_stats.append(
                     StatisticData(start=dt, state=cost, sum=cost_sum)
@@ -133,6 +134,6 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
             )
             async_add_external_statistics(self.hass, cost_metadata, cost_stats)
             _LOGGER.debug(
-                "Inserted %d cost statistics for %s (price=%.4f CHF/kWh)",
-                len(cost_stats), self.cost_statistic_id, self.price_per_kwh,
+                "Inserted %d cost statistics for %s",
+                len(cost_stats), self.cost_statistic_id,
             )
