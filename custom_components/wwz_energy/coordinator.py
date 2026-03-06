@@ -8,9 +8,14 @@ import re
 from zoneinfo import ZoneInfo
 
 from homeassistant.components.recorder.models import StatisticData, StatisticMeanType, StatisticMetaData
-from homeassistant.components.recorder.statistics import async_add_external_statistics
+from homeassistant.components.recorder.statistics import (
+    async_add_external_statistics,
+    get_last_statistics,
+    statistics_during_period,
+)
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.recorder import get_instance
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import WwzApiClient, WwzApiError
@@ -52,7 +57,7 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
             raise UpdateFailed("No meter ID available")
 
         now = datetime.now(tz=CET)
-        from_date = now - timedelta(days=self.lookback_days)
+        from_date = await self._get_fetch_start(now)
 
         try:
             data = await self.api_client.get_hourly_data(meter_id, from_date=from_date, to_date=now)
@@ -76,23 +81,92 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
         )
 
         if sorted_values:
-            await self._insert_statistics(sorted_values)
+            await self._insert_statistics(sorted_values, from_date)
 
         return data
 
-    async def _insert_statistics(self, sorted_values: list[dict]) -> None:
+    async def _get_fetch_start(self, now: datetime) -> datetime:
+        """Determine the start of the fetch window.
+
+        If we already have statistics recorded, fetch only from the last known
+        hour (minus a small overlap buffer) instead of the full lookback window.
+        Falls back to lookback_days on first run or if the recorder query fails.
+        """
+        fallback = now - timedelta(days=self.lookback_days)
+        try:
+            last_stat = await get_instance(self.hass).async_add_executor_job(
+                get_last_statistics, self.hass, 1, self.energy_statistic_id, False, {"start"}
+            )
+        except Exception:
+            _LOGGER.debug("Could not query recorder for last statistic, using full lookback")
+            return fallback
+
+        if not last_stat or self.energy_statistic_id not in last_stat:
+            _LOGGER.debug("No existing statistics found, using full lookback")
+            return fallback
+
+        # start is a UTC epoch float (seconds) from the recorder DB
+        last_start = last_stat[self.energy_statistic_id][0]["start"]
+        last_dt = datetime.fromtimestamp(last_start, tz=CET)
+        fetch_from = last_dt - timedelta(hours=2)
+        _LOGGER.debug(
+            "Last statistic at %s, fetching from %s (saved ~%d hours)",
+            last_dt.isoformat(),
+            fetch_from.isoformat(),
+            max(0, int((fetch_from - fallback).total_seconds() / 3600)),
+        )
+        return fetch_from
+
+    async def _get_last_sum(
+        self, statistic_id: str, fetch_start: datetime
+    ) -> tuple[float, float | None]:
+        """Return (sum, last_start_ts) from the recorder at fetch_start.
+
+        Returns (0.0, None) when no prior statistics exist.
+        """
+        try:
+            stats = await get_instance(self.hass).async_add_executor_job(
+                statistics_during_period,
+                self.hass,
+                fetch_start,
+                None,
+                {statistic_id},
+                "hour",
+                None,
+                {"sum"},
+            )
+        except Exception:
+            return 0.0, None
+
+        if not stats or statistic_id not in stats:
+            return 0.0, None
+
+        return stats[statistic_id][0]["sum"], stats[statistic_id][0]["start"]
+
+    async def _insert_statistics(self, sorted_values: list[dict], fetch_start: datetime) -> None:
         """Write hourly energy consumption and cost as external statistics."""
+        energy_sum, last_energy_ts = await self._get_last_sum(
+            self.energy_statistic_id, fetch_start
+        )
+        cost_sum, last_cost_ts = await self._get_last_sum(
+            self.cost_statistic_id, fetch_start
+        )
+
         energy_stats: list[StatisticData] = []
         cost_stats: list[StatisticData] = []
-        energy_sum = 0.0
-        cost_sum = 0.0
 
         for v in sorted_values:
             kwh = v.get("value") or 0.0
-            energy_sum = round(energy_sum + kwh, 3)
             dt = datetime.fromtimestamp(v["date"] / 1000, tz=CET).replace(
                 minute=0, second=0, microsecond=0
             )
+            dt_ts = dt.timestamp()
+
+            # Skip rows already covered by the recorder
+            if last_energy_ts is not None and dt_ts <= last_energy_ts:
+                continue
+
+            energy_sum = round(energy_sum + kwh, 3)
             energy_stats.append(
                 StatisticData(start=dt, state=round(kwh, 3), sum=energy_sum)
             )
