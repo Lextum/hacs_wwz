@@ -1,11 +1,11 @@
 {
   "name": "WWZ Energy Development",
   "build": { "dockerfile": "Dockerfile" },
+  "remoteUser": "vscode",
   "forwardPorts": [8123],
   "mounts": [
     "source=${localWorkspaceFolder}/custom_components/wwz_energy,target=/config/custom_components/wwz_energy,type=bind"
   ],
-  "postStartCommand": "python -m homeassistant -c /config &",
   "customizations": {
     "vscode": {
       "settings": {
