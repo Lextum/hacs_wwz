@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import logging
-import re
 from zoneinfo import ZoneInfo
 
 from homeassistant.components.recorder.models import StatisticData, StatisticMeanType, StatisticMetaData
@@ -14,11 +13,12 @@ from homeassistant.components.recorder.statistics import (
     statistics_during_period,
 )
 from homeassistant.const import UnitOfEnergy
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.recorder import get_instance
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import WwzApiClient, WwzApiError
+from .util import statistic_ids_for_entry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,10 +45,19 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
         )
         self.api_client = api_client
         self.lookback_days = lookback_days
-        slug = re.sub(r"[^a-z0-9]", "_", entry_unique_id.lower()).strip("_")
-        self.energy_statistic_id = f"wwz_energy:{slug}_energy_consumption"
-        self.cost_statistic_id = f"wwz_energy:{slug}_energy_cost"
+        self.energy_statistic_id, self.cost_statistic_id = statistic_ids_for_entry(entry_unique_id)
         self.price_per_kwh_by_year: dict[int, float] = {}
+
+        @callback
+        def _dummy_listener() -> None:
+            pass
+
+        # The coordinator only schedules its refresh loop when at least one
+        # listener is registered.  Since this integration writes external
+        # statistics and has no sensor entities, nothing subscribes naturally.
+        # Register a no-op listener so _schedule_refresh kicks in and
+        # _async_update_data is called on every update_interval.
+        self.async_add_listener(_dummy_listener)
 
     async def _async_update_data(self) -> dict:
         """Fetch energy data and write external statistics for consumption and cost."""
