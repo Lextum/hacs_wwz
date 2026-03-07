@@ -133,3 +133,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if data:
         await data["energy_coordinator"].api_client.close()
     return True
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clean up statistics when the config entry is removed."""
+    from homeassistant.helpers.recorder import get_instance
+
+    from .util import statistic_ids_for_entry
+
+    statistic_ids = list(statistic_ids_for_entry(entry.unique_id or ""))
+    get_instance(hass).async_clear_statistics(statistic_ids)
