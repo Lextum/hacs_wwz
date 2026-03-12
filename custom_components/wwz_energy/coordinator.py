@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime, timedelta
 import logging
 from zoneinfo import ZoneInfo
@@ -35,6 +36,7 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
         api_client: WwzApiClient,
         entry_unique_id: str,
         lookback_days: int = 2,
+        full_days_only: bool = False,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -45,6 +47,7 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
         )
         self.api_client = api_client
         self.lookback_days = lookback_days
+        self.full_days_only = full_days_only
         self.energy_statistic_id, self.cost_statistic_id = statistic_ids_for_entry(entry_unique_id)
         self.price_per_kwh_by_year: dict[int, float] = {}
 
@@ -83,6 +86,9 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
 
         sorted_values = sorted(seen.values(), key=lambda x: x["date"])
 
+        if self.full_days_only:
+            sorted_values = self._filter_full_days(sorted_values)
+
         _LOGGER.debug(
             "%d valid values out of %d total",
             len(sorted_values),
@@ -93,6 +99,18 @@ class WwzEnergyCoordinator(DataUpdateCoordinator[dict]):
             await self._insert_statistics(sorted_values, from_date)
 
         return data
+
+    @staticmethod
+    def _filter_full_days(sorted_values: list[dict]) -> list[dict]:
+        """Keep only values belonging to calendar days with 24 hourly entries."""
+        by_day: dict[str, list[dict]] = defaultdict(list)
+        for v in sorted_values:
+            day = datetime.fromtimestamp(v["date"] / 1000, tz=CET).strftime("%Y-%m-%d")
+            by_day[day].append(v)
+
+        return [
+            v for day, values in by_day.items() if len(values) == 24 for v in values
+        ]
 
     async def _get_fetch_start(self, now: datetime) -> datetime:
         """Determine the start of the fetch window.

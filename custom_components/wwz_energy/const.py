@@ -13,6 +13,7 @@ API_METER_POINT_ID_PATH = "//wwz/rest/WWZMeterProfileViewWWZService/getMeterPoin
 API_DATA_PATH = "//wwz/rest/WWZSmartMeterService/getDiagramValues"
 
 CONF_ENABLE_PRICE_SENSOR = "enable_price_sensor"
+CONF_FULL_DAYS_ONLY = "full_days_only"
 CONF_LOOKBACK_DAYS = "lookback_days"
 DEFAULT_LOOKBACK_DAYS = 2
 

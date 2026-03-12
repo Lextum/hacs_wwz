@@ -21,6 +21,7 @@ from .api import WwzApiClient, WwzApiError, WwzAuthError
 from .const import (
     CONF_ENABLE_PRICE_SENSOR,
     CONF_ENERGY_TARIFF,
+    CONF_FULL_DAYS_ONLY,
     CONF_GRID_TARIFF,
     CONF_LOOKBACK_DAYS,
     CONF_MUNICIPALITY,
@@ -42,6 +43,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
             int, vol.Range(min=1, max=365)
         ),
         vol.Optional(CONF_ENABLE_PRICE_SENSOR, default=False): BooleanSelector(),
+        vol.Optional(CONF_FULL_DAYS_ONLY, default=False): BooleanSelector(),
     }
 )
 
@@ -155,6 +157,7 @@ class WwzEnergyConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._user_options = {
                     CONF_LOOKBACK_DAYS: user_input.get(CONF_LOOKBACK_DAYS, DEFAULT_LOOKBACK_DAYS),
                     CONF_ENABLE_PRICE_SENSOR: user_input.get(CONF_ENABLE_PRICE_SENSOR, False),
+                    CONF_FULL_DAYS_ONLY: user_input.get(CONF_FULL_DAYS_ONLY, False),
                 }
 
                 await self.async_set_unique_id(self._meter_id)
@@ -209,6 +212,7 @@ class WwzEnergyOptionsFlow(OptionsFlow):
             data = {
                 CONF_LOOKBACK_DAYS: user_input[CONF_LOOKBACK_DAYS],
                 CONF_ENABLE_PRICE_SENSOR: user_input.get(CONF_ENABLE_PRICE_SENSOR, False),
+                CONF_FULL_DAYS_ONLY: user_input.get(CONF_FULL_DAYS_ONLY, False),
                 CONF_ENERGY_TARIFF: user_input.get(
                     CONF_ENERGY_TARIFF,
                     self.config_entry.options.get(CONF_ENERGY_TARIFF, DEFAULT_ENERGY_TARIFF),
@@ -230,6 +234,9 @@ class WwzEnergyOptionsFlow(OptionsFlow):
         current_enable_price = self.config_entry.options.get(
             CONF_ENABLE_PRICE_SENSOR, False
         )
+        current_full_days_only = self.config_entry.options.get(
+            CONF_FULL_DAYS_ONLY, False
+        )
         current_energy = self.config_entry.options.get(
             CONF_ENERGY_TARIFF, DEFAULT_ENERGY_TARIFF
         )
@@ -246,6 +253,9 @@ class WwzEnergyOptionsFlow(OptionsFlow):
             ): vol.All(int, vol.Range(min=1, max=365)),
             vol.Optional(
                 CONF_ENABLE_PRICE_SENSOR, default=current_enable_price
+            ): BooleanSelector(),
+            vol.Optional(
+                CONF_FULL_DAYS_ONLY, default=current_full_days_only
             ): BooleanSelector(),
         }
 

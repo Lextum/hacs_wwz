@@ -18,6 +18,7 @@ from .api import WwzApiClient
 from .const import (
     CONF_ENABLE_PRICE_SENSOR,
     CONF_ENERGY_TARIFF,
+    CONF_FULL_DAYS_ONLY,
     CONF_GRID_TARIFF,
     CONF_LOOKBACK_DAYS,
     CONF_MUNICIPALITY,
@@ -81,8 +82,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise
 
     lookback_days = entry.options.get(CONF_LOOKBACK_DAYS, DEFAULT_LOOKBACK_DAYS)
+    full_days_only = entry.options.get(CONF_FULL_DAYS_ONLY, False)
 
-    energy_coordinator = WwzEnergyCoordinator(hass, client, entry.unique_id, lookback_days)
+    energy_coordinator = WwzEnergyCoordinator(
+        hass, client, entry.unique_id, lookback_days, full_days_only
+    )
 
     entry_data: dict[str, Any] = {
         "energy_coordinator": energy_coordinator,

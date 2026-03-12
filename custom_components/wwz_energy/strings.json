@@ -8,11 +8,13 @@
           "username": "Email",
           "password": "Password",
           "lookback_days": "Lookback Days",
-          "enable_price_sensor": "Enable Cost Tracking"
+          "enable_price_sensor": "Enable Cost Tracking",
+          "full_days_only": "Full Days Only"
         },
         "data_description": {
           "lookback_days": "Number of days to fetch from the API (1-365).",
-          "enable_price_sensor": "Calculates energy cost as an external statistic based on your tariff selection."
+          "enable_price_sensor": "Calculates energy cost as an external statistic based on your tariff selection.",
+          "full_days_only": "Only write statistics for days with all 24 hourly values."
         }
       },
       "tariff": {
@@ -45,6 +47,7 @@
         "data": {
           "lookback_days": "Lookback Days",
           "enable_price_sensor": "Enable Cost Tracking",
+          "full_days_only": "Full Days Only",
           "energy_tariff": "Energy Product",
           "grid_tariff": "Grid Tariff",
           "municipality": "Municipality"
@@ -52,6 +55,7 @@
         "data_description": {
           "lookback_days": "Number of days to fetch from the API (1-365).",
           "enable_price_sensor": "Calculates energy cost as an external statistic based on your tariff selection.",
+          "full_days_only": "Only write statistics for days with all 24 hourly values.",
           "energy_tariff": "Your WWZ energy product.",
           "grid_tariff": "Your grid usage tariff.",
           "municipality": "Your municipality for local fees."
