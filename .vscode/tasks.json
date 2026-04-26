@@ -4,7 +4,7 @@
     {
       "label": "Run Home Assistant",
       "type": "shell",
-      "command": "sudo python -m homeassistant -c /config",
+      "command": "python -m homeassistant -c /config",
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
