@@ -12,9 +12,10 @@ import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import WwzApiClient
+from .api import WwzApiClient, WwzApiError, WwzAuthError
 from .const import (
     CONF_ENABLE_PRICE_SENSOR,
     CONF_ENERGY_TARIFF,
@@ -77,6 +78,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     client = WwzApiClient(entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD])
     try:
         await client.login()
+    except WwzAuthError as err:
+        await client.close()
+        raise ConfigEntryAuthFailed(str(err)) from err
+    except WwzApiError as err:
+        await client.close()
+        raise ConfigEntryNotReady(f"WWZ portal unavailable: {err}") from err
     except Exception:
         await client.close()
         raise
