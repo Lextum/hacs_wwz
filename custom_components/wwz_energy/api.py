@@ -203,7 +203,6 @@ class WwzApiClient:
         from_ms = int(from_midnight.timestamp() * 1000)
         to_ms = int(to_midnight.timestamp() * 1000)
 
-        session = await self._ensure_session()
         url = f"{API_BASE_URL}{API_DATA_PATH}"
         params = {
             "from": str(from_ms),
@@ -212,57 +211,47 @@ class WwzApiClient:
             "until": str(to_ms),
         }
 
-        try:
-            async with session.get(url, params=params) as resp:
-                if resp.status != 200:
-                    body = await resp.text()
-                    raise WwzApiError(
-                        f"API request failed ({resp.status}): {body[:200]}"
-                    )
-                data = await resp.json()
-        except aiohttp.ClientError as err:
-            raise WwzApiError(f"Connection error: {err}") from err
+        data = await self._get_json_with_reauth(url, params)
+        inner = data["data"]
+        return {
+            "values": inner.get("values", []),
+            "unit": inner.get("unit", "kWh"),
+        }
 
-        inner = data.get("data") if data else None
-
-        # Re-authenticate on session expiry
-        if inner is None:
-            msg_text = (
-                data.get("frontEndMessage", {}).get("message", "") if data else ""
-            )
-            if (
-                "not logged in" in msg_text.lower()
-                or "unauthorized" in msg_text.lower()
-            ):
-                _LOGGER.debug("Session expired, re-authenticating")
+    async def _get_json_with_reauth(self, url: str, params: dict) -> dict:
+        """GET a JSON endpoint, re-authenticating and retrying once on any failure."""
+        last_err: Exception | None = None
+        for attempt in (1, 2):
+            if attempt == 2:
+                _LOGGER.debug("Retrying after failure, re-authenticating: %s", last_err)
                 await self.login()
-                session = await self._ensure_session()
-                try:
-                    async with session.get(url, params=params) as resp:
-                        if resp.status != 200:
-                            body = await resp.text()
-                            raise WwzApiError(
-                                f"API request failed after re-auth ({resp.status}): {body[:200]}"
-                            )
-                        data = await resp.json()
-                except aiohttp.ClientError as err:
-                    raise WwzApiError(f"Connection error: {err}") from err
-                inner = data.get("data") if data else None
 
-        if inner is None:
+            session = await self._ensure_session()
+            try:
+                async with session.get(url, params=params) as resp:
+                    if resp.status != 200:
+                        body_preview = (await resp.text())[:200]
+                        last_err = WwzApiError(
+                            f"API request failed ({resp.status}): {body_preview}"
+                        )
+                        continue
+                    data = await resp.json(content_type=None)
+            except (aiohttp.ClientError, ValueError) as err:
+                last_err = WwzApiError(f"Request error: {err}")
+                continue
+
+            if data and data.get("data") is not None:
+                return data
+
             msg_text = (
                 data.get("frontEndMessage", {}).get("message", "unknown")
                 if data
                 else "empty response"
             )
-            raise WwzApiError(f"API returned no data: {msg_text}")
+            last_err = WwzApiError(f"API returned no data: {msg_text}")
 
-        values = inner.get("values", [])
-
-        return {
-            "values": values,
-            "unit": inner.get("unit", "kWh"),
-        }
+        assert last_err is not None
+        raise last_err
 
     async def close(self) -> None:
         """Close the API session."""
