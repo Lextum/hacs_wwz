@@ -90,8 +90,11 @@ class WwzApiClient:
                     "client": "wwz",
                 },
             ) as resp:
-                if resp.status != 200:
+                if resp.status in (401, 403):
                     raise WwzAuthError(f"Login failed with status {resp.status}")
+                if resp.status != 200:
+                    # Portal outages (e.g. 503) are transient, not bad credentials
+                    raise WwzApiError(f"Login failed with status {resp.status}")
 
                 body = await resp.json()
                 msg = body.get("frontEndMessage", {})
