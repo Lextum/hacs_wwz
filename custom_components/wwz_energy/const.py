@@ -2,15 +2,17 @@
 
 DOMAIN = "wwz_energy"
 
-API_BASE_URL = "https://cpp01.wwz.ch"
-API_LOGIN_PATH = "//loginRegistration/rest/loginService/login"
-API_VALIDATION_PATH = "//loginRegistration/rest/loginService/validation"
-API_CONTRACT_ACCOUNTS_PATH = (
-    "//switchContractAccount/rest/switchContractAccount/contractAccounts"
-)
-API_METER_POINTS_PATH = "//wwz/rest/WWZMeterProfileViewWWZService/getMeterPoints"
-API_METER_POINT_ID_PATH = "//wwz/rest/WWZMeterProfileViewWWZService/getMeterPointId"
-API_DATA_PATH = "//wwz/rest/WWZSmartMeterService/getDiagramValues"
+API_BASE_URL = "https://www.wwz.ch"
+API_PORTAL_PATH = "/energieportal"
+API_READ_TOKEN_PATH = "/api/authorization/readtoken"
+API_CONTRACT_ACCOUNTS_PATH = "/api/stromportal/contractaccounts"
+API_METER_POINTS_PATH = "/api/stromportal/getMeterPoints"
+API_METER_POINT_ID_PATH = "/api/stromportal/getMeterPointId"
+API_DATA_PATH = "/api/stromportal/getDiagramValues"
+
+IAM_REST_URL = "https://cockpit.wwz.ch/auth-login/rest/public/authentication"
+IAM_AUTHORIZE_PATH = "/oauth2/authorization-servers/wwz/authorize"
+IAM_PASSWORD_CHECK_PATH = "/password/check"
 
 CONF_ENABLE_PRICE_SENSOR = "enable_price_sensor"
 CONF_FULL_DAYS_ONLY = "full_days_only"
