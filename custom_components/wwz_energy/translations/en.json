@@ -30,6 +30,22 @@
           "grid_tariff": "Your grid usage tariff.",
           "municipality": "Your municipality for local fees."
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate WWZ",
+        "description": "The WWZ login failed. Enter your current WWZ portal credentials.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
+      },
+      "reconfigure": {
+        "title": "Update WWZ credentials",
+        "description": "Enter new WWZ portal credentials for this meter.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -38,7 +54,10 @@
       "unknown": "An unexpected error occurred."
     },
     "abort": {
-      "already_configured": "This meter is already configured."
+      "already_configured": "This meter is already configured.",
+      "reauth_successful": "Re-authentication was successful.",
+      "reconfigure_successful": "Credentials updated.",
+      "wrong_account": "These credentials belong to a different meter."
     }
   },
   "options": {

@@ -200,6 +200,80 @@ class WwzEnergyConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=_build_tariff_schema(tariff_data),
         )
 
+    async def _async_validate_credentials(
+        self, user_input: dict[str, Any], errors: dict[str, str]
+    ) -> str | None:
+        """Log in with the given credentials and return the meter ID, or None on error."""
+        client = WwzApiClient(user_input[CONF_USERNAME], user_input[CONF_PASSWORD])
+        try:
+            await client.login()
+        except WwzAuthError:
+            errors["base"] = "invalid_auth"
+        except (WwzApiError, TimeoutError):
+            errors["base"] = "cannot_connect"
+        except Exception:
+            _LOGGER.exception("Unexpected error during login")
+            errors["base"] = "unknown"
+        else:
+            return client.meter_id
+        finally:
+            await client.close()
+        return None
+
+    async def _async_update_credentials(
+        self, step_id: str, entry: ConfigEntry, user_input: dict[str, Any] | None
+    ) -> ConfigFlowResult:
+        """Validate new credentials against the entry's meter and store them."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            meter_id = await self._async_validate_credentials(user_input, errors)
+            if meter_id is not None:
+                await self.async_set_unique_id(meter_id)
+                self._abort_if_unique_id_mismatch(reason="wrong_account")
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data_updates={
+                        CONF_USERNAME: user_input[CONF_USERNAME],
+                        CONF_PASSWORD: user_input[CONF_PASSWORD],
+                    },
+                )
+
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_USERNAME, default=entry.data.get(CONF_USERNAME, "")
+                    ): str,
+                    vol.Required(CONF_PASSWORD): str,
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_reauth(
+        self, entry_data: dict[str, Any]
+    ) -> ConfigFlowResult:
+        """Handle re-authentication after a login failure."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for new credentials."""
+        return await self._async_update_credentials(
+            "reauth_confirm", self._get_reauth_entry(), user_input
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change the credentials of an existing entry."""
+        return await self._async_update_credentials(
+            "reconfigure", self._get_reconfigure_entry(), user_input
+        )
+
 
 class WwzEnergyOptionsFlow(OptionsFlow):
     """Handle options for WWZ Energy."""

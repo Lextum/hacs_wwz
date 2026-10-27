@@ -108,7 +108,11 @@ class WwzApiClient:
                 if resp.status in (400, 401, 403):
                     body = await resp.json(content_type=None)
                     codes = [e.get("code") for e in body.get("errors") or []]
-                    raise WwzAuthError(f"Login failed: {', '.join(map(str, codes))}")
+                    message = f"Login failed: {', '.join(map(str, codes))}"
+                    # Lockouts after failed attempts expire on their own
+                    if "USER_TEMPORARILY_LOCKED" in codes:
+                        raise WwzApiError(message)
+                    raise WwzAuthError(message)
                 if resp.status != 200:
                     # Portal outages (e.g. 503) are transient, not bad credentials
                     raise WwzApiError(f"Login failed with status {resp.status}")
